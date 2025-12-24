@@ -110,6 +110,41 @@ let showFavoritesFirst = false;
 let isPickingForDrink = false;
 let drinkDraft = { id: undefined, name: '', rating: 0, image: '', imageId: null, ingredients: [] };
 
+// Persisted UI state: sorting per screen + favorites toggle
+const SORT_STORAGE_KEY = 'tuksbar_sort_state';
+let sortState = { drinks: 'date', ingredients: 'date', picker: 'date' };
+function initSortState() {
+    try {
+        const saved = JSON.parse(localStorage.getItem(SORT_STORAGE_KEY)) || {};
+        sortState = {
+            drinks: saved.drinks || 'date',
+            ingredients: saved.ingredients || 'date',
+            picker: saved.picker || 'date'
+        };
+    } catch (e) {}
+}
+function getSort(view) { return (sortState[view] || 'date'); }
+function setSort(view, value) {
+    sortState[view] = value;
+    currentSort = value;
+    try { localStorage.setItem(SORT_STORAGE_KEY, JSON.stringify(sortState)); } catch (e) {}
+}
+
+const FAVORITES_STORAGE_KEY = 'tuksbar_fav_first';
+function initFavoritesFirst() {
+    try {
+        const saved = JSON.parse(localStorage.getItem(FAVORITES_STORAGE_KEY));
+        if (typeof saved === 'boolean') showFavoritesFirst = saved;
+    } catch (e) {}
+}
+function persistFavoritesFirst() {
+    try { localStorage.setItem(FAVORITES_STORAGE_KEY, JSON.stringify(showFavoritesFirst)); } catch (e) {}
+}
+
+// Initialize persisted state
+initSortState();
+initFavoritesFirst();
+
 // Migrate any legacy inline images into the dedicated image database
 migrateImagesToImageDb();
 
@@ -121,6 +156,7 @@ function toggleMenu() {
 
 const router = {
     currentView: 'drinks',
+    isRestoringFromHistory: false,
     async navigate(view, id = null, clearSearch = true) {
         content.innerHTML = '';
         if (document.getElementById('sidebar').classList.contains('open')) toggleMenu();
@@ -133,6 +169,13 @@ const router = {
 
         if ((view === 'drinks' || view === 'ingredients') && clearSearch) {
             searchQuery = '';
+        }
+
+        // Push state to history for browser back button support
+        if (!this.isRestoringFromHistory) {
+            const state = { view, id, clearSearch, searchQuery, isPickingForDrink };
+            const url = '#' + view + (id ? '/' + id : '');
+            history.pushState(state, '', url);
         }
 
         if (view === 'drinks') renderDrinks();
@@ -170,6 +213,9 @@ async function renderDrinks() {
         router.navigate('drink-edit');
     };
 
+    // Set sort from persisted state for Drinks
+    currentSort = getSort('drinks');
+
     // 1. Static Search Header (Only render if it doesn't exist)
     content.innerHTML = `
         <div class="search-container">
@@ -177,9 +223,9 @@ async function renderDrinks() {
                    value="${searchQuery}" oninput="updateSearch(this.value)">
             <div style="display:flex; gap:15px; font-size:0.75rem; margin-top:8px; color:var(--text-dim)">
                 <span>ORGANIZAR POR:</span>
-                <span class="sort-btn" data-sort="date" onclick="currentSort='date'; refreshDrinkList()" style="cursor:pointer; color:${currentSort==='date'?'var(--primary)':'white'}">DATA</span>
-                <span class="sort-btn" data-sort="name" onclick="currentSort='name'; refreshDrinkList()" style="cursor:pointer; color:${currentSort==='name'?'var(--primary)':'white'}">NOME</span>
-                <span class="sort-btn" data-sort="rating" onclick="currentSort='rating'; refreshDrinkList()" style="cursor:pointer; color:${currentSort==='rating'?'var(--primary)':'white'}">AVALIAÇÃO</span>
+                <span class="sort-btn" data-sort="date" onclick="setSort('drinks','date'); refreshDrinkList()" style="cursor:pointer; color:${currentSort==='date'?'var(--primary)':'white'}">DATA</span>
+                <span class="sort-btn" data-sort="name" onclick="setSort('drinks','name'); refreshDrinkList()" style="cursor:pointer; color:${currentSort==='name'?'var(--primary)':'white'}">NOME</span>
+                <span class="sort-btn" data-sort="rating" onclick="setSort('drinks','rating'); refreshDrinkList()" style="cursor:pointer; color:${currentSort==='rating'?'var(--primary)':'white'}">AVALIAÇÃO</span>
             </div>
         </div>
         <div id="list-container"></div>
@@ -207,14 +253,36 @@ async function refreshDrinkList() {
 
     let drinks = await db.drinks.toArray();
 
-    // Filtering Logic - Multi-term search
+    // Filtering Logic - Multi-term search with rating filter and OR support
     if (searchQuery) {
         const terms = searchQuery.toLowerCase().split(/\s+/).filter(t => t.length > 0);
         drinks = drinks.filter(d => {
             const drinkName = d.name.toLowerCase();
             const ingredientNames = (d.ingredients || []).map(i => i.name.toLowerCase()).join(' ');
             const fullText = drinkName + ' ' + ingredientNames;
-            return terms.every(term => fullText.includes(term));
+            return terms.every(term => {
+                // Check if term contains OR operator (+)
+                if (term.includes('+')) {
+                    const orTerms = term.split('+').filter(t => t.length > 0);
+                    return orTerms.some(orTerm => {
+                        // Check if orTerm is a rating filter
+                        const ratingMatch = orTerm.match(/^([0-6])\*$/);
+                        if (ratingMatch) {
+                            const rating = parseInt(ratingMatch[1], 10);
+                            return d.rating === rating;
+                        }
+                        return fullText.includes(orTerm);
+                    });
+                }
+                // Check if term is a rating filter (e.g., "3*", "6*")
+                const ratingMatch = term.match(/^([0-6])\*$/);
+                if (ratingMatch) {
+                    const rating = parseInt(ratingMatch[1], 10);
+                    return d.rating === rating;
+                }
+                // Otherwise, search in text
+                return fullText.includes(term);
+            });
         });
     }
 
@@ -1083,6 +1151,10 @@ async function renderIngredients() {
     actionBtn.innerText = "+";
     actionBtn.onclick = () => router.navigate('ingredient-edit');
 
+    // Set sort from persisted state for Ingredients and load favorites-first
+    currentSort = getSort('ingredients');
+    initFavoritesFirst();
+
     content.innerHTML = `
         <div class="search-container">
             <input type="text" id="main-search" placeholder="Buscar ingredientes..."
@@ -1090,8 +1162,8 @@ async function renderIngredients() {
             <div class="sort-row" style="display:flex; justify-content:space-between; align-items:center; font-size:0.75rem; margin-top:8px; color:var(--text-dim)">
                 <div style="display:flex; gap:15px;">
                     <span>ORGANIZAR POR:</span>
-                    <span class="sort-btn" data-sort="date" onclick="currentSort='date'; refreshIngredientList()" style="cursor:pointer; color:${currentSort==='date'?'var(--primary)':'white'}">DATA</span>
-                    <span class="sort-btn" data-sort="name" onclick="currentSort='name'; refreshIngredientList()" style="cursor:pointer; color:${currentSort==='name'?'var(--primary)':'white'}">NOME</span>
+                    <span class="sort-btn" data-sort="date" onclick="setSort('ingredients','date'); refreshIngredientList()" style="cursor:pointer; color:${currentSort==='date'?'var(--primary)':'white'}">DATA</span>
+                    <span class="sort-btn" data-sort="name" onclick="setSort('ingredients','name'); refreshIngredientList()" style="cursor:pointer; color:${currentSort==='name'?'var(--primary)':'white'}">NOME</span>
                 </div>
                 <span id="favorites-toggle" class="favorite-icon favorite-icon-abs" onclick="toggleFavoritesSort('ingredients')" style="cursor:pointer; color:${showFavoritesFirst?'white':'var(--text-dim)'}">${showFavoritesFirst ? '♥' : '♡'}</span>
             </div>
@@ -1125,6 +1197,7 @@ function updateFavoritesToggleUI() {
 
 function toggleFavoritesSort(context = 'ingredients') {
     showFavoritesFirst = !showFavoritesFirst;
+    persistFavoritesFirst();
     updateFavoritesToggleUI();
     if (context === 'picker') {
         const input = document.getElementById('picker-search');
@@ -1301,6 +1374,10 @@ async function renderIngredientPicker() {
     actionBtn.innerText = "+";
     actionBtn.onclick = () => router.navigate('ingredient-edit');
     
+    // Set sort from persisted state for Picker and load favorites-first
+    currentSort = getSort('picker');
+    initFavoritesFirst();
+
     content.innerHTML = `
         <div class="search-container">
             <input type="text" id="picker-search" placeholder="Buscar ingredientes..."
@@ -1308,8 +1385,8 @@ async function renderIngredientPicker() {
             <div class="sort-row" style="display:flex; justify-content:space-between; align-items:center; font-size:0.75rem; margin-top:8px; color:var(--text-dim)">
                 <div style="display:flex; gap:15px;">
                     <span>ORGANIZAR POR:</span>
-                    <span class="sort-btn" data-sort="date" onclick="currentSort='date'; searchIng(document.getElementById('picker-search').value)" style="cursor:pointer; color:${currentSort==='date'?'var(--primary)':'white'}">DATA</span>
-                    <span class="sort-btn" data-sort="name" onclick="currentSort='name'; searchIng(document.getElementById('picker-search').value)" style="cursor:pointer; color:${currentSort==='name'?'var(--primary)':'white'}">NOME</span>
+                    <span class="sort-btn" data-sort="date" onclick="setSort('picker','date'); searchIng(document.getElementById('picker-search').value)" style="cursor:pointer; color:${currentSort==='date'?'var(--primary)':'white'}">DATA</span>
+                    <span class="sort-btn" data-sort="name" onclick="setSort('picker','name'); searchIng(document.getElementById('picker-search').value)" style="cursor:pointer; color:${currentSort==='name'?'var(--primary)':'white'}">NOME</span>
                 </div>
                 <span id="favorites-toggle" class="favorite-icon favorite-icon-abs" onclick="toggleFavoritesSort('picker')" style="cursor:pointer; color:${showFavoritesFirst?'white':'var(--text-dim)'}">${showFavoritesFirst ? '♥' : '♡'}</span>
             </div>
@@ -1347,9 +1424,17 @@ async function searchIng(q) {
     
     filtered.forEach(ing => {
         const imgSrc = (ing.imageId && imageMap[ing.imageId]) || ing.image || getAssetPath('/asset/bottle-512.png');
+        const favoriteIcon = ing.favorite ? '♥' : '♡';
         const div = document.createElement('div');
         div.className = 'list-item';
-        div.innerHTML = `${renderMediaElement(imgSrc, 'thumb-media', { withControls: false })}<h4>${ing.name}</h4>`;
+        div.style.cssText = 'display:flex; align-items:center; gap:10px;';
+        div.innerHTML = `
+            ${renderMediaElement(imgSrc, 'thumb-media', { withControls: false })}
+            <h4 style="flex:1; margin:0;">${ing.name}</h4>
+            <div style="width:40px; display:flex; justify-content:center; align-items:center; margin-left:auto;">
+                <button class="favorite-btn favorite-icon" data-ing-id="${ing.id}" style="background:none; border:none; color:var(--primary); cursor:pointer; padding:0;" onclick="event.stopPropagation(); toggleFavorite(${ing.id})">${favoriteIcon}</button>
+            </div>
+        `;
         div.onclick = () => {
             drinkDraft.ingredients.push({ id: ing.id, name: ing.name, amount: '' });
             router.navigate('drink-edit', drinkDraft.id);
@@ -1577,4 +1662,26 @@ window.addEventListener('appinstalled', () => {
     deferredPrompt = null;
 });
 
+// Handle browser back button / gesture
+window.addEventListener('popstate', (event) => {
+    if (event.state) {
+        router.isRestoringFromHistory = true;
+        const { view, id, clearSearch, searchQuery: savedSearch, isPickingForDrink: savedPicking } = event.state;
+        if (savedSearch !== undefined) searchQuery = savedSearch;
+        if (savedPicking !== undefined) isPickingForDrink = savedPicking;
+        router.navigate(view, id, clearSearch).then(() => {
+            router.isRestoringFromHistory = false;
+        });
+    } else {
+        // No state, go to drinks home
+        router.isRestoringFromHistory = true;
+        router.navigate('drinks').then(() => {
+            router.isRestoringFromHistory = false;
+        });
+    }
+});
+
+// Initialize with history state
+const initialState = { view: 'drinks', id: null, clearSearch: true, searchQuery: '', isPickingForDrink: false };
+history.replaceState(initialState, '', '#drinks');
 router.navigate('drinks');
