@@ -3,6 +3,14 @@ db.version(2).stores({
     drinks: '++id, name, rating',
     ingredients: '++id, name'
 });
+db.version(3).stores({
+    drinks: '++id, name, rating',
+    ingredients: '++id, name, favorite'
+}).upgrade(tx => {
+    return tx.table('ingredients').toCollection().modify(ing => {
+        ing.favorite = ing.favorite || false;
+    });
+});
 
 // Separate database to store images only
 const imageDb = new Dexie("BarImageDatabase");
@@ -98,6 +106,7 @@ const actionBtn = document.getElementById('main-action-btn');
 
 let currentSort = 'date';
 let searchQuery = '';
+let showFavoritesFirst = false;
 let isPickingForDrink = false;
 let drinkDraft = { id: undefined, name: '', rating: 0, image: '', imageId: null, ingredients: [] };
 
@@ -1078,10 +1087,13 @@ async function renderIngredients() {
         <div class="search-container">
             <input type="text" id="main-search" placeholder="Buscar ingredientes..."
                    value="${searchQuery}" oninput="updateIngredientSearch(this.value)">
-            <div style="display:flex; gap:15px; font-size:0.75rem; margin-top:8px; color:var(--text-dim)">
-                <span>ORGANIZAR POR:</span>
-                <span class="sort-btn" data-sort="date" onclick="currentSort='date'; refreshIngredientList()" style="cursor:pointer; color:${currentSort==='date'?'var(--primary)':'white'}">DATA</span>
-                <span class="sort-btn" data-sort="name" onclick="currentSort='name'; refreshIngredientList()" style="cursor:pointer; color:${currentSort==='name'?'var(--primary)':'white'}">NOME</span>
+            <div class="sort-row" style="display:flex; justify-content:space-between; align-items:center; font-size:0.75rem; margin-top:8px; color:var(--text-dim)">
+                <div style="display:flex; gap:15px;">
+                    <span>ORGANIZAR POR:</span>
+                    <span class="sort-btn" data-sort="date" onclick="currentSort='date'; refreshIngredientList()" style="cursor:pointer; color:${currentSort==='date'?'var(--primary)':'white'}">DATA</span>
+                    <span class="sort-btn" data-sort="name" onclick="currentSort='name'; refreshIngredientList()" style="cursor:pointer; color:${currentSort==='name'?'var(--primary)':'white'}">NOME</span>
+                </div>
+                <span id="favorites-toggle" class="favorite-icon favorite-icon-abs" onclick="toggleFavoritesSort('ingredients')" style="cursor:pointer; color:${showFavoritesFirst?'white':'var(--text-dim)'}">${showFavoritesFirst ? '♥' : '♡'}</span>
             </div>
         </div>
         <div id="list-container"></div>
@@ -1094,6 +1106,32 @@ async function renderIngredients() {
     if (searchQuery) {
         searchInput.focus();
         searchInput.setSelectionRange(searchQuery.length, searchQuery.length);
+    }
+}
+
+async function toggleFavorite(id) {
+    const ing = await db.ingredients.get(id);
+    if (!ing) return;
+    await db.ingredients.update(id, { favorite: !ing.favorite });
+    refreshIngredientList();
+}
+
+function updateFavoritesToggleUI() {
+    const heart = document.getElementById('favorites-toggle');
+    if (!heart) return;
+    heart.textContent = showFavoritesFirst ? '♥' : '♡';
+    heart.style.color = showFavoritesFirst ? 'white' : 'var(--text-dim)';
+}
+
+function toggleFavoritesSort(context = 'ingredients') {
+    showFavoritesFirst = !showFavoritesFirst;
+    updateFavoritesToggleUI();
+    if (context === 'picker') {
+        const input = document.getElementById('picker-search');
+        const val = input ? input.value : '';
+        searchIng(val);
+    } else {
+        refreshIngredientList();
     }
 }
 
@@ -1110,7 +1148,15 @@ async function refreshIngredientList() {
     }
 
     // Sorting Logic
-    ings.sort((a, b) => currentSort === 'date' ? b.id - a.id : a.name.localeCompare(b.name));
+    ings.sort((a, b) => {
+        // If favorites filter is active, sort favorites first
+        if (showFavoritesFirst) {
+            if (a.favorite && !b.favorite) return -1;
+            if (!a.favorite && b.favorite) return 1;
+        }
+        // Then apply the selected sort mode
+        return currentSort === 'date' ? b.id - a.id : a.name.localeCompare(b.name);
+    });
 
     const imageMap = await bulkLoadImages(ings.map(i => i.imageId).filter(Boolean));
 
@@ -1118,13 +1164,18 @@ async function refreshIngredientList() {
     document.querySelectorAll('.sort-btn').forEach(btn => {
         btn.style.color = btn.dataset.sort === currentSort ? 'var(--primary)' : 'white';
     });
+    updateFavoritesToggleUI();
 
     container.innerHTML = ings.map(ing => {
         const imgSrc = (ing.imageId && imageMap[ing.imageId]) || ing.image || getAssetPath('/asset/bottle-512.png');
+        const favoriteIcon = ing.favorite ? '♥' : '♡';
         return `
-        <div class="list-item" data-ing-id="${ing.id}">
+        <div class="list-item" data-ing-id="${ing.id}" style="display:flex; align-items:center; gap:10px;">
             ${renderMediaElement(imgSrc, 'thumb-media', { withControls: false })}
-            <h4>${ing.name}</h4>
+            <h4 style="flex:1; margin:0;">${ing.name}</h4>
+            <div style="width:40px; display:flex; justify-content:center; align-items:center; margin-left:auto;">
+                <button class="favorite-btn favorite-icon" data-ing-id="${ing.id}" style="background:none; border:none; color:var(--primary); cursor:pointer; padding:0;" onclick="event.stopPropagation(); toggleFavorite(${ing.id})">${favoriteIcon}</button>
+            </div>
         </div>
     `;
     }).join('');
@@ -1208,7 +1259,11 @@ async function saveIng(id) {
     const imageId = await persistImage(image, currentImageId, 'ingredient', id);
     document.getElementById('ing-image-id').value = imageId || '';
 
-    const newId = await db.ingredients.put({ id: id || undefined, name, imageId, image: null });
+    // Preserve favorite status when editing
+    const existingIng = id ? await db.ingredients.get(id) : null;
+    const favorite = existingIng ? existingIng.favorite : false;
+
+    const newId = await db.ingredients.put({ id: id || undefined, name, imageId, image: null, favorite });
     
     // Propagate ingredient changes to all drinks that use this ingredient
     if (id) {
@@ -1250,10 +1305,13 @@ async function renderIngredientPicker() {
         <div class="search-container">
             <input type="text" id="picker-search" placeholder="Buscar ingredientes..."
                    oninput="searchIng(this.value)">
-            <div style="display:flex; gap:15px; font-size:0.75rem; margin-top:8px; color:var(--text-dim)">
-                <span>ORGANIZAR POR:</span>
-                <span class="sort-btn" data-sort="date" onclick="currentSort='date'; searchIng(document.getElementById('picker-search').value)" style="cursor:pointer; color:${currentSort==='date'?'var(--primary)':'white'}">DATA</span>
-                <span class="sort-btn" data-sort="name" onclick="currentSort='name'; searchIng(document.getElementById('picker-search').value)" style="cursor:pointer; color:${currentSort==='name'?'var(--primary)':'white'}">NOME</span>
+            <div class="sort-row" style="display:flex; justify-content:space-between; align-items:center; font-size:0.75rem; margin-top:8px; color:var(--text-dim)">
+                <div style="display:flex; gap:15px;">
+                    <span>ORGANIZAR POR:</span>
+                    <span class="sort-btn" data-sort="date" onclick="currentSort='date'; searchIng(document.getElementById('picker-search').value)" style="cursor:pointer; color:${currentSort==='date'?'var(--primary)':'white'}">DATA</span>
+                    <span class="sort-btn" data-sort="name" onclick="currentSort='name'; searchIng(document.getElementById('picker-search').value)" style="cursor:pointer; color:${currentSort==='name'?'var(--primary)':'white'}">NOME</span>
+                </div>
+                <span id="favorites-toggle" class="favorite-icon favorite-icon-abs" onclick="toggleFavoritesSort('picker')" style="cursor:pointer; color:${showFavoritesFirst?'white':'var(--text-dim)'}">${showFavoritesFirst ? '♥' : '♡'}</span>
             </div>
         </div>
         <div id="picker-list"></div>
@@ -1269,7 +1327,15 @@ async function searchIng(q) {
     const filtered = terms.length === 0 ? ings : ings.filter(i => terms.every(term => i.name.toLowerCase().includes(term)));
     
     // Sorting Logic
-    filtered.sort((a, b) => currentSort === 'date' ? b.id - a.id : a.name.localeCompare(b.name));
+    filtered.sort((a, b) => {
+        // If favorites filter is active, sort favorites first
+        if (showFavoritesFirst) {
+            if (a.favorite && !b.favorite) return -1;
+            if (!a.favorite && b.favorite) return 1;
+        }
+        // Then apply the selected sort mode
+        return currentSort === 'date' ? b.id - a.id : a.name.localeCompare(b.name);
+    });
 
     const imageMap = await bulkLoadImages(filtered.map(i => i.imageId).filter(Boolean));
 
@@ -1277,6 +1343,7 @@ async function searchIng(q) {
     document.querySelectorAll('.sort-btn').forEach(btn => {
         btn.style.color = btn.dataset.sort === currentSort ? 'var(--primary)' : 'white';
     });
+    updateFavoritesToggleUI();
     
     filtered.forEach(ing => {
         const imgSrc = (ing.imageId && imageMap[ing.imageId]) || ing.image || getAssetPath('/asset/bottle-512.png');
