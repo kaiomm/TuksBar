@@ -1,10 +1,11 @@
 const CACHE_NAME = 'bar-cache-v2';
+const basePath = self.location.pathname.includes('/TuksBar/') ? '/TuksBar' : '';
 const filesToCache = [
-  '/',
-  '/index.html',
-  '/style.css',
-  '/app.js',
-  '/lib/dexie.js'
+  basePath + '/',
+  basePath + '/index.html',
+  basePath + '/style.css',
+  basePath + '/app.js',
+  basePath + '/lib/dexie.js'
 ];
 
 self.addEventListener('install', e => {

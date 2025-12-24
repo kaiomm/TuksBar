@@ -12,6 +12,12 @@ imageDb.version(1).stores({
 
 const isDataUrl = (value) => typeof value === 'string' && value.startsWith('data:');
 
+// Get the base path for assets (works on both localhost and GitHub Pages)
+const getAssetPath = (assetPath) => {
+    const basePath = window.location.pathname.includes('/TuksBar/') ? '/TuksBar' : '';
+    return basePath + assetPath;
+};
+
 // Media helpers
 const isVideoSrc = (src) => {
     if (typeof src !== 'string') return false;
@@ -21,7 +27,7 @@ const isVideoSrc = (src) => {
 
 const renderMediaElement = (src, className = 'media-el', opts = {}) => {
     const { withControls = false, muted = true, loop = true, autoplay = false } = opts;
-    const safeSrc = src || '/asset/camera-512.png';
+    const safeSrc = src || getAssetPath('/asset/camera-512.png');
     if (isVideoSrc(safeSrc)) {
         const controlsAttr = withControls ? ' controls' : '';
         const loopAttr = loop ? ' loop' : '';
@@ -29,13 +35,13 @@ const renderMediaElement = (src, className = 'media-el', opts = {}) => {
         const autoplayAttr = autoplay ? ' autoplay' : '';
         return `<video src="${safeSrc}" class="${className}"${controlsAttr}${loopAttr}${mutedAttr}${autoplayAttr} preload="metadata"></video>`;
     }
-    return `<img src="${safeSrc}" class="${className}" onerror="this.src='/asset/camera-512.png'">`;
+    return `<img src="${safeSrc}" class="${className}" onerror="this.src='${getAssetPath(\"/asset/camera-512.png\")}'">​`;
 };
 
 function setMediaPreview(containerId, src, withControls = false, autoplay = false) {
     const container = document.getElementById(containerId);
     if (!container) return;
-    const mediaSrc = src || '/asset/camera-512.png';
+    const mediaSrc = src || getAssetPath('/asset/camera-512.png');
     container.dataset.mediaSrc = mediaSrc;
     container.innerHTML = renderMediaElement(mediaSrc, 'media-el', { withControls, muted: true, loop: true, autoplay });
 }
@@ -210,7 +216,7 @@ async function refreshDrinkList() {
     // Update ONLY the inner list content
     container.innerHTML = drinks.map(drink => {
         const ingText = (drink.ingredients || []).map(i => i.name).join(', ');
-        const imgSrc = (drink.imageId && imageMap[drink.imageId]) || drink.image || '/asset/drink-512.png';
+        const imgSrc = (drink.imageId && imageMap[drink.imageId]) || drink.image || getAssetPath('/asset/drink-512.png');
         return `
             <div class="list-item" data-drink-id="${drink.id}">
                 ${renderMediaElement(imgSrc, 'thumb-media', { withControls: false })}
@@ -219,7 +225,7 @@ async function refreshDrinkList() {
                     <p>${ingText || 'Sem ingredientes'}</p>
                 </div>
                 <div style="color:var(--primary); display:flex; align-items:center; gap:5px">
-                    ${drink.rating === 6 ? `<img src="/asset/tucano-256.png" style="width:2rem; height:2rem" title="Tucano!">` : `★ ${drink.rating}`}
+                    ${drink.rating === 6 ? `<img src="${getAssetPath('/asset/tucano-256.png')}" style="width:2rem; height:2rem" title="Tucano!">` : `★ ${drink.rating}`}
                 </div>
             </div>
         `;
@@ -986,7 +992,7 @@ async function renderDrinkEdit(id = null) {
     updateStars();
     renderDraftIngredients();
 
-    setMediaPreview('preview', drinkDraft.image || '/asset/camera-512.png', false, true);
+    setMediaPreview('preview', drinkDraft.image || getAssetPath('/asset/camera-512.png'), false, true);
 
     const handleFileChange = (e) => {
         const file = e.target.files[0];
@@ -1010,7 +1016,7 @@ function updateStars() {
     if (drinkDraft.rating === 6) {
         // Secret 6-star rating with toucan only
         container.innerHTML = `
-            <img src="/asset/tucano-256.png" style="width:3rem; height:3rem; cursor:pointer" onclick="handleStarClick(6)" title="Tucano!">
+            <img src="${getAssetPath('/asset/tucano-256.png')}" style="width:3rem; height:3rem; cursor:pointer" onclick="handleStarClick(6)" title="Tucano!">
         `;
     } else {
         container.innerHTML = [1,2,3,4,5].map(i => `
@@ -1113,7 +1119,7 @@ async function refreshIngredientList() {
     });
 
     container.innerHTML = ings.map(ing => {
-        const imgSrc = (ing.imageId && imageMap[ing.imageId]) || ing.image || '/asset/bottle-512.png';
+        const imgSrc = (ing.imageId && imageMap[ing.imageId]) || ing.image || getAssetPath('/asset/bottle-512.png');
         return `
         <div class="list-item" data-ing-id="${ing.id}">
             ${renderMediaElement(imgSrc, 'thumb-media', { withControls: false })}
@@ -1157,7 +1163,7 @@ async function renderIngredientEdit(id = null) {
     setContentHasSearch(false);
     const ing = id ? await db.ingredients.get(id) : { name: '', image: '', imageId: null };
     const imageData = await loadImageData(ing.imageId, ing.image || '');
-    const previewSrc = imageData || '/asset/camera-512.png';
+    const previewSrc = imageData || getAssetPath('/asset/camera-512.png');
     title.innerText = id ? "Editar Ingrediente" : "Novo Ingrediente";
     actionBtn.innerText = id ? "🗑️" : "";
     actionBtn.onclick = async () => { if(id && confirm("Excluir Ingrediente?")) { await db.ingredients.delete(id); router.navigate('ingredients'); }};
@@ -1195,7 +1201,7 @@ async function renderIngredientEdit(id = null) {
 async function saveIng(id) {
     const name = document.getElementById('ing-name').value;
     const imageContainer = document.getElementById('ing-prev');
-    const image = imageContainer?.dataset.mediaSrc || '/asset/camera-512.png';
+    const image = imageContainer?.dataset.mediaSrc || getAssetPath('/asset/camera-512.png');
     const rawId = document.getElementById('ing-image-id').value;
     const currentImageId = rawId ? Number(rawId) : undefined;
     const imageId = await persistImage(image, currentImageId, 'ingredient', id);
@@ -1272,7 +1278,7 @@ async function searchIng(q) {
     });
     
     filtered.forEach(ing => {
-        const imgSrc = (ing.imageId && imageMap[ing.imageId]) || ing.image || '/asset/bottle-512.png';
+        const imgSrc = (ing.imageId && imageMap[ing.imageId]) || ing.image || getAssetPath('/asset/bottle-512.png');
         const div = document.createElement('div');
         div.className = 'list-item';
         div.innerHTML = `${renderMediaElement(imgSrc, 'thumb-media', { withControls: false })}<h4>${ing.name}</h4>`;
@@ -1287,7 +1293,7 @@ async function searchIng(q) {
 async function renderDrinkDetail(id) {
     setContentHasSearch(false);
     const d = await db.drinks.get(id);
-    const imgSrc = await loadImageData(d.imageId, d.image || '/asset/drink-512.png');
+    const imgSrc = await loadImageData(d.imageId, d.image || getAssetPath('/asset/drink-512.png'));
     title.innerText = d.name;
     actionBtn.innerText = "✎";
     actionBtn.onclick = () => router.navigate('drink-edit', id);
@@ -1295,7 +1301,7 @@ async function renderDrinkDetail(id) {
     // Build stars display
     let starsHtml;
     if (d.rating === 6) {
-        starsHtml = `<img src="/asset/tucano-256.png" style="width:4rem; height:4rem" title="Tucano!">`;
+        starsHtml = `<img src="${getAssetPath('/asset/tucano-256.png')}" style="width:4rem; height:4rem" title="Tucano!">`;
     } else {
         starsHtml = [1,2,3,4,5].map(i => `<span class="star ${i <= d.rating ? 'active' : ''}">★</span>`).join('');
     }
