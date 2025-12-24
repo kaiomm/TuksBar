@@ -235,7 +235,7 @@ async function refreshDrinkList() {
                     <p>${ingText || 'Sem ingredientes'}</p>
                 </div>
                 <div style="color:var(--primary); display:flex; align-items:center; gap:5px">
-                    ${drink.rating === 6 ? `<img src="${getAssetPath('/asset/tucano-256.png')}" style="width:2rem; height:2rem" title="Tucano!">` : `★ ${drink.rating}`}
+                    ${drink.rating === 6 ? `<img src="${getAssetPath('/asset/tucano-256.png')}" style="width:2rem; height:2rem" title="Tucano!">` : `${drink.rating} ★`}
                 </div>
             </div>
         `;
