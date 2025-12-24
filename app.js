@@ -1404,7 +1404,7 @@ async function exportDatabase(includeImages = false) {
     const blob = new Blob([JSON.stringify(payload)], { type: 'application/json' });
     const a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
-    a.download = includeImages ? 'bar_backup_with_images.json' : 'bar_backup.json';
+    a.download = includeImages ? 'tuksbar_backup_com_imagens.json' : 'tuksbar_backup_sem_imagens.json';
     a.click();
 }
 
@@ -1441,6 +1441,23 @@ async function checkDatabaseSize() {
         const drinks = await db.drinks.toArray();
         const ingredients = await db.ingredients.toArray();
         const images = await imageDb.images.toArray();
+        // Build reference set of image IDs in use
+        const referenced = new Set([
+            ...drinks.map(d => d.imageId).filter(Boolean),
+            ...ingredients.map(i => i.imageId).filter(Boolean)
+        ]);
+        const allImageIds = images.map(img => img.id).filter(Boolean);
+        const unusedImageIds = allImageIds.filter(id => !referenced.has(id));
+        const unreferencedCount = unusedImageIds.length;
+        // Classify media into images, GIFs, and videos
+        let imageCount = 0, gifCount = 0, videoCount = 0;
+        for (const rec of images) {
+            const src = rec?.data || '';
+            if (!src) continue;
+            if (isVideoSrc(src)) videoCount++;
+            else if (isGifImage(src)) gifCount++;
+            else imageCount++;
+        }
         
         // Convert to JSON string to get approximate size
         const drinksJson = JSON.stringify(drinks);
@@ -1457,12 +1474,15 @@ async function checkDatabaseSize() {
             return bytes > 1024 * 1024 ? `${mb} MB` : `${kb} KB`;
         };
         
-        let message = `📊 ARMAZENAMENTO\n\n`;
+        let message = `📊 BANCO DE DADOS\n\n`;
         message += `Drinks: ${drinks.length} itens\n`;
         message += `Ingredientes: ${ingredients.length} itens\n`;
-        message += `Imagens: ${images.length} arquivos\n`;
+        message += `Imagens: ${imageCount} arquivos\n`;
+        message += `GIFs: ${gifCount} arquivos\n`;
+        message += `Vídeos: ${videoCount} arquivos\n`;
+        message += `Não usadas: ${unreferencedCount} mídias\n`;
         message += `Tamanho dados: ${formatSize(dataDbSize)}\n`;
-        message += `Tamanho imagens: ${formatSize(imageDbSize)}\n`;
+        message += `Tamanho mídias: ${formatSize(imageDbSize)}\n`;
         message += `Total: ${formatSize(totalSize)}\n\n`;
         
         // Check if Storage API is available
@@ -1488,6 +1508,34 @@ async function checkDatabaseSize() {
         alert(message);
     } catch (error) {
         alert("Erro ao calcular armazenamento: " + error.message);
+    }
+}
+
+async function deleteUnusedImages() {
+    try {
+        const drinks = await db.drinks.toArray();
+        const ingredients = await db.ingredients.toArray();
+        const images = await imageDb.images.toArray();
+
+        const referenced = new Set([
+            ...drinks.map(d => d.imageId).filter(Boolean),
+            ...ingredients.map(i => i.imageId).filter(Boolean)
+        ]);
+
+        const allImageIds = images.map(img => img.id).filter(Boolean);
+        const unusedImageIds = allImageIds.filter(id => !referenced.has(id));
+
+        if (unusedImageIds.length === 0) {
+            alert('Armazenamento não precisa ser otimizado.');
+            return;
+        }
+
+        if (!confirm(`Remover ${unusedImageIds.length} mídias não usadas?`)) return;
+
+        await imageDb.images.bulkDelete(unusedImageIds);
+        alert(`Removidas ${unusedImageIds.length} mídias não usadas.`);
+    } catch (err) {
+        alert('Erro ao remover mídias não usadas: ' + err.message);
     }
 }
 

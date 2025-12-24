@@ -17,9 +17,10 @@
     <div id="sidebar">
         <div class="sidebar-header">Configurações</div>
         <button id="install-btn" class="hidden">📲  Instalar</button>
-        <button onclick="checkDatabaseSize()">💾  Banco de Dados</button>
-        <button onclick="exportDatabaseWithoutImages()">📤  Backup (sem fotos)</button>
-        <button onclick="exportDatabaseWithImages()">📤  Backup (com fotos)</button>
+        <button onclick="checkDatabaseSize()">💾  Armazenamento</button>
+        <button onclick="deleteUnusedImages()">🧹  Otimizar armazenamento</button>
+        <button onclick="exportDatabaseWithoutImages()">📤  Backup sem imagens)</button>
+        <button onclick="exportDatabaseWithImages()">📤  Backup com imagens</button>
         <button onclick="document.getElementById('import-input').click()">📥  Restaurar Backup</button>
         <button onclick="resetDatabase()" style="color:var(--danger); margin-top: 20px;">🗑️  Limpar Tudo</button>
         <input type="file" id="import-input" class="hidden" accept=".json" onchange="importDatabase(event)">
