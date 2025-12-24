@@ -35,7 +35,8 @@ const renderMediaElement = (src, className = 'media-el', opts = {}) => {
         const autoplayAttr = autoplay ? ' autoplay' : '';
         return `<video src="${safeSrc}" class="${className}"${controlsAttr}${loopAttr}${mutedAttr}${autoplayAttr} preload="metadata"></video>`;
     }
-    return `<img src="${safeSrc}" class="${className}" onerror="this.src='${getAssetPath(\"/asset/camera-512.png\")}'">​`;
+    const fallbackPath = getAssetPath('/asset/camera-512.png');
+    return `<img src="${safeSrc}" class="${className}" onerror="this.src='${fallbackPath}'">`;
 };
 
 function setMediaPreview(containerId, src, withControls = false, autoplay = false) {
