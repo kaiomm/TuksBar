@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Tuks Bar</title>
+    <link rel="manifest" href="manifest.json">
+    <link rel="stylesheet" href="style.css">
+    <script src="lib/dexie.js"></script>
+    <script src="lib/gif.js"></script>
+    <script src="lib/gifuct-js.js"></script>
+    <script src="lib/gif-transform.js"></script>
+</head>
+<body>
+
+    <div id="sidebar-overlay" onclick="toggleMenu()"></div>
+    <div id="sidebar">
+        <div class="sidebar-header">Configurações</div>
+        <button id="install-btn" class="hidden">📲  Instalar</button>
+        <button onclick="checkDatabaseSize()">💾  Banco de Dados</button>
+        <button onclick="exportDatabaseWithoutImages()">📤  Backup (sem fotos)</button>
+        <button onclick="exportDatabaseWithImages()">📤  Backup (com fotos)</button>
+        <button onclick="document.getElementById('import-input').click()">📥  Restaurar Backup</button>
+        <button onclick="resetDatabase()" style="color:var(--danger); margin-top: 20px;">🗑️  Limpar Tudo</button>
+        <input type="file" id="import-input" class="hidden" accept=".json" onchange="importDatabase(event)">
+    </div>
+
+    <header>
+        <button id="menu-btn" onclick="toggleMenu()">☰</button>
+        <h2 id="view-title">Drinks</h2>
+        <div id="header-right">
+            <button id="main-action-btn">+</button>
+        </div>
+    </header>
+
+    <main id="app-content"></main>
+
+    <nav class="bottom-nav">
+        <button onclick="router.navigate('drinks')">DRINKS</button>
+        <button onclick="router.navigate('ingredients')">INGREDIENTES</button>
+    </nav>
+
+    <script src="app.js"></script>
+</body>
+</html>
