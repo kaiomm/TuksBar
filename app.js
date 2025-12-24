@@ -1568,7 +1568,7 @@ async function checkDatabaseSize() {
         message += `Não usadas: ${unreferencedCount} mídias\n`;
         message += `Tamanho dados: ${formatSize(dataDbSize)}\n`;
         message += `Tamanho mídias: ${formatSize(imageDbSize)}\n`;
-        message += `Total: ${formatSize(totalSize)}\n\n`;
+        message += `Total: ${formatSize(totalSize)}\n`;
         
         // Check if Storage API is available
         if (navigator.storage && navigator.storage.estimate) {
